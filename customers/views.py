@@ -1,3 +1,7 @@
+import csv
+import io
+
+from django.http import HttpResponse
 from rest_framework import generics, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -45,4 +49,30 @@ class CustomerImportView(APIView):
             )
 
         result = import_customers(csv_content)
+        rejected_rows = result.pop("rejected_rows")
+        columns = result.pop("columns")
+        if rejected_rows:
+            output = io.StringIO(newline="")
+            writer = csv.writer(output)
+            writer.writerow([*columns, "_row_number", "_error"])
+            for rejected_row in rejected_rows:
+                writer.writerow(
+                    [
+                        *rejected_row["values"],
+                        rejected_row["row_number"],
+                        rejected_row["error"],
+                    ]
+                )
+            response = HttpResponse(
+                output.getvalue(),
+                content_type="text/csv; charset=utf-8",
+            )
+            response["Content-Disposition"] = (
+                'attachment; filename="rejected_rows.csv"'
+            )
+            response["X-Import-Created"] = str(result["created"])
+            response["X-Import-Updated"] = str(result["updated"])
+            response["X-Import-Rejected"] = str(result["rejected"])
+            response["X-Import-Total"] = str(result["total"])
+            return response
         return Response(result, status=status.HTTP_200_OK)

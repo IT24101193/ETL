@@ -1,9 +1,9 @@
 # Customer CSV ETL API
 
 A small, containerized ETL service built with Django REST Framework. It accepts
-customer records from a CSV upload, validates the complete file, then creates or
-updates records in PostgreSQL. Imports are all-or-nothing: invalid rows do not
-partially write data.
+customer records from a CSV upload, validates each row, then creates or updates
+valid records in PostgreSQL. Invalid rows and duplicate emails are written to a
+downloadable rejection report while valid rows continue to load.
 
 ## Requirements
 
@@ -40,8 +40,13 @@ Grace Hopper,grace@example.com,+1-555-0101,US Navy
 ```
 
 Emails are trimmed and lowercased. Re-importing an email updates that customer;
-new emails create customers. Duplicate emails within one file and any invalid
-row reject the entire import.
+new emails create customers. If an email appears more than once in the same
+file, the first occurrence is imported and later occurrences are included in the
+rejection report. Rows with missing required fields, invalid email addresses,
+or invalid phone numbers are also reported; they do not prevent valid rows from
+being imported. Optional phone and company values may be blank. Phone numbers
+must contain 7 to 15 digits; a leading `+`, spaces, hyphens, and parentheses
+are allowed. Valid rows are written in batches of 1,000.
 
 ## API
 
@@ -57,11 +62,16 @@ Example upload:
 curl.exe -X POST -F "file=@customers.csv" http://localhost:8000/api/imports/customers/
 ```
 
-Successful import response:
+When every row is valid, the response is JSON:
 
 ```json
-{"created": 2, "updated": 0, "total": 2}
+{"created": 2, "updated": 0, "rejected": 0, "total": 2}
 ```
+
+If any rows are rejected, the response is a downloadable `rejected_rows.csv`
+containing the original CSV columns plus `_row_number` and `_error`. The response
+headers `X-Import-Created`, `X-Import-Updated`, `X-Import-Rejected`, and
+`X-Import-Total` summarize the import. The upload limit is 10 MB.
 
 ## Local development and tests
 
@@ -84,21 +94,3 @@ runner:
 ```powershell
 pytest
 ```
-
-## Git workflow
-
-Start development on `develop` and merge completed work into `main`:
-
-```powershell
-git init
-git switch -c main
-git switch -c develop
-# Make and test changes on develop
-git add .
-git commit -m "Build customer CSV ETL API"
-git switch main
-git merge --no-ff develop
-```
-
-If the repository is already initialized, keep its existing branches and apply
-the same workflow without running `git init`.

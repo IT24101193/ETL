@@ -1,6 +1,10 @@
 from rest_framework import serializers
+import re
 
 from customers.models import Customer
+
+
+PHONE_PATTERN = re.compile(r"^\+?[0-9().\s-]+$")
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -18,3 +22,14 @@ class CustomerImportSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         return value.casefold()
+
+    def validate_phone(self, value):
+        if not value:
+            return value
+        digits = re.sub(r"\D", "", value)
+        if not PHONE_PATTERN.fullmatch(value) or not 7 <= len(digits) <= 15:
+            raise serializers.ValidationError(
+                "Enter a phone number with 7 to 15 digits; spaces, +, hyphens, "
+                "and parentheses are allowed."
+            )
+        return value
